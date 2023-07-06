@@ -387,6 +387,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "temp-file"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4479870ee948e4c5c3fc4774b46aa73eedf97d84503a9b90922c1bb19a73a8d"
+
+[[package]]
 name = "thiserror"
 version = "1.0.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -425,6 +431,7 @@ dependencies = [
  "anyhow",
  "clap",
  "inkwell",
+ "temp-file",
  "thiserror",
 ]
 

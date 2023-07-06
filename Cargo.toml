@@ -7,4 +7,5 @@ edition = "2021"
 anyhow = "1.0.71"
 clap = { version = "4.3.11", features = ["derive"] }
 inkwell = { version = "0.2.0", features = ["llvm15-0"] }
+temp-file = "0.1.7"
 thiserror = "1.0.41"

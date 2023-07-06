@@ -7,6 +7,11 @@ use viv_script::{build, CompilerOptions};
 enum CompilerCommand {
     /// Compile and run file
     Run { input_file: String },
+    /// Compile file
+    Build {
+        input_file: String,
+        output_file: String,
+    },
 }
 
 #[derive(Args)]
@@ -53,7 +58,25 @@ fn main() -> anyhow::Result<()> {
 
     match arguments.command {
         CompilerCommand::Run { input_file } => {
-            build(input_file, compiler_options).context("Building input file")?;
+            let output_file = temp_file::empty();
+            build(
+                &input_file,
+                output_file.path().to_str().unwrap(),
+                compiler_options,
+            )
+            .context("Building input file")?;
+
+            let output = std::process::Command::new(output_file.path())
+                .spawn()?
+                .wait()?;
+
+            std::process::exit(output.code().unwrap_or(1));
+        }
+        CompilerCommand::Build {
+            input_file,
+            output_file,
+        } => {
+            build(&input_file, &output_file, compiler_options).context("Building input file")?;
         }
     }
 
