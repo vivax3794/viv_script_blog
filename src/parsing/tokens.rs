@@ -6,8 +6,18 @@ use thiserror::Error;
 pub enum TokenType {
     Integer(IntType),
     Identifier(String),
+    String(String),
     Print,
     SemiColon,
+    Dollar,
+    CurlyOpen,
+    CurlyClose,
+    Comma,
+    True,
+    False,
+    Assert,
+    Eq,
+    EqEq,
     Eof,
 }
 
@@ -97,6 +107,9 @@ impl Tokenizer {
 
         self.token(match identifier.as_str() {
             "print" => TokenType::Print,
+            "true" => TokenType::True,
+            "false" => TokenType::False,
+            "assert" => TokenType::Assert,
             _ => TokenType::Identifier(identifier),
         })
     }
@@ -122,20 +135,66 @@ impl Tokenizer {
         }
     }
 
-    pub fn tokenize(mut self) -> Result<Vec<Token>, TokenizerError> {
-        let mut tokens = Vec::new();
-        while let Ok(c) = self.code.peek() {
-            match c {
-                c if c.is_ascii_digit() => tokens.push(self.consume_number()),
-                c if c.is_ascii_alphabetic() => tokens.push(self.consume_identifier()),
-                ';' => {
-                    tokens.push(self.token(TokenType::SemiColon));
+    fn consume_string(&mut self) -> Result<Token, TokenizerError> {
+        let mut string = String::new();
+        self.void();
+        loop {
+            match self.code.peek() {
+                Ok('"') => {
+                    self.void();
+                    break;
+                }
+                Ok('\n') => self.error("Unexpected newline in string".to_string())?,
+                Ok(c) => {
+                    string.push(*c);
                     self.void();
                 }
-                c if c.is_ascii_whitespace() => self.consume_whitespace(),
+                Err(_) => self.error("Unexpected end of file".to_string())?,
+            }
+        }
+        Ok(self.token(TokenType::String(string)))
+    }
+
+    fn consume_double_symbol(
+        &mut self,
+        next_char: char,
+        single_token: TokenType,
+        double_token: TokenType,
+    ) -> Token {
+        self.void();
+        if let Ok(c) = self.code.peek() {
+            if c == &next_char {
+                self.void();
+                self.token(double_token)
+            } else {
+                self.token(single_token)
+            }
+        } else {
+            self.token(single_token)
+        }
+    }
+
+    pub fn tokenize(mut self) -> Result<Vec<Token>, TokenizerError> {
+        let mut tokens = Vec::new();
+        while let Ok(&c) = self.code.peek() {
+            match c {
                 '#' => self.consume_comment(),
+                '"' => tokens.push(self.consume_string()?),
+                c if c.is_ascii_digit() => tokens.push(self.consume_number()),
+                c if c.is_ascii_alphabetic() => tokens.push(self.consume_identifier()),
+                c if c.is_ascii_whitespace() => self.consume_whitespace(),
+                '=' => tokens.push(self.consume_double_symbol('=', TokenType::Eq, TokenType::EqEq)),
                 _ => {
-                    self.error(format!("Unexpected character: {}", c))?;
+                    self.void();
+
+                    match c {
+                        ';' => tokens.push(self.token(TokenType::SemiColon)),
+                        '$' => tokens.push(self.token(TokenType::Dollar)),
+                        ',' => tokens.push(self.token(TokenType::Comma)),
+                        '{' => tokens.push(self.token(TokenType::CurlyOpen)),
+                        '}' => tokens.push(self.token(TokenType::CurlyClose)),
+                        _ => self.error(format!("Unexpected character: {}", c))?,
+                    }
                 }
             }
         }

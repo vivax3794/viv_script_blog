@@ -12,6 +12,8 @@ enum CompilerCommand {
         input_file: String,
         output_file: String,
     },
+    /// Compile and run all files in integration_tests/
+    Test,
 }
 
 #[derive(Args)]
@@ -46,6 +48,47 @@ struct CompilerCli {
     debug: DebugArguments,
 }
 
+fn run_test(file: &str) -> anyhow::Result<()> {
+    print!("Running test: {file} ... ");
+
+    let output_file = temp_file::empty();
+    build(
+        file,
+        output_file.path().to_str().unwrap(),
+        CompilerOptions {
+            dont_optimize: false,
+            output_tokens: false,
+            output_ast: false,
+            output_ir: false,
+            output_llvm: false,
+        },
+    )?;
+    let output = std::process::Command::new(output_file.path())
+        .spawn()?
+        .wait()?;
+
+    if !output.success() {
+        println!("ERROR");
+        Err(anyhow::anyhow!("Test failed: {}", file))?;
+    } else {
+        println!("OK");
+    }
+
+    Ok(())
+}
+
+fn run_tests() -> anyhow::Result<()> {
+    for file in std::fs::read_dir("integration_tests")? {
+        let file = file?;
+        let file_name = file.file_name().into_string().unwrap();
+        if file_name.ends_with(".viv") {
+            run_test(file.path().to_str().unwrap())?;
+        }
+    }
+
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let arguments = CompilerCli::parse();
     let compiler_options = CompilerOptions {
@@ -78,6 +121,7 @@ fn main() -> anyhow::Result<()> {
         } => {
             build(&input_file, &output_file, compiler_options).context("Building input file")?;
         }
+        CompilerCommand::Test => run_tests()?,
     }
 
     Ok(())

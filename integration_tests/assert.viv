@@ -1,0 +1,3 @@
+${
+    assert true, "Well this is awkward";
+}

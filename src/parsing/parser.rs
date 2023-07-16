@@ -57,14 +57,32 @@ impl Parser {
         let token = self.advance()?;
         match token._type {
             TokenType::Integer(i) => Ok(ast::Literal::Integer(i)),
+            TokenType::True => Ok(ast::Literal::Boolean(true)),
+            TokenType::False => Ok(ast::Literal::Boolean(false)),
             _ => Err(error(token, "Literal".to_string()))?,
         }
     }
 
-    fn expression(&mut self) -> anyhow::Result<ast::Expression> {
+    fn prefix(&mut self) -> anyhow::Result<ast::Expression> {
         match self.peek()? {
-            TokenType::Integer(_) => Ok(ast::Expression::Literal(self.literal()?)),
-            _ => Err(error(self.advance()?, "Expression".to_string()))?,
+            _ => Ok(ast::Expression::Literal(self.literal()?)),
+        }
+    }
+
+    fn expression(&mut self) -> anyhow::Result<ast::Expression> {
+        let left_side = self.prefix()?;
+
+        match self.peek()? {
+            TokenType::EqEq => {
+                self.0.void();
+                let right_side = self.prefix()?;
+                Ok(ast::Expression::BinaryOp(
+                    Box::new(left_side),
+                    ast::BinaryOp::Equals,
+                    Box::new(right_side),
+                ))
+            }
+            _ => Ok(left_side),
         }
     }
 
@@ -76,7 +94,44 @@ impl Parser {
                 self.expect(TokenType::SemiColon)?;
                 Ok(result)
             }
+            TokenType::Assert => {
+                let expression = self.expression()?;
+                let message = match self.peek()? {
+                    TokenType::Comma => {
+                        self.0.void();
+                        let should_be_string = self.advance()?;
+                        match should_be_string._type {
+                            TokenType::String(msg) => Some(msg),
+                            _ => Err(error(should_be_string, "String".to_string()))?,
+                        }
+                    }
+                    _ => None,
+                };
+
+                self.expect(TokenType::SemiColon)?;
+
+                Ok(ast::Statement::Assert(expression, message))
+            }
             _ => Err(error(token, "Statement".to_string()))?,
+        }
+    }
+
+    fn main_function(&mut self) -> anyhow::Result<ast::ToplevelStatement> {
+        self.expect(TokenType::CurlyOpen)?;
+
+        let mut statements = Vec::new();
+        while self.peek()? != &TokenType::CurlyClose {
+            statements.push(self.statement()?);
+        }
+        self.expect(TokenType::CurlyClose)?;
+
+        Ok(ast::ToplevelStatement::MainFunction(statements))
+    }
+
+    fn top_level_statement(&mut self) -> anyhow::Result<ast::ToplevelStatement> {
+        match self.advance()?._type {
+            TokenType::Dollar => self.main_function(),
+            _ => Err(error(self.advance()?, "Top Level Statement".to_string()))?,
         }
     }
 
@@ -84,7 +139,7 @@ impl Parser {
         let mut statements = Vec::new();
 
         while self.peek()? != &TokenType::Eof {
-            statements.push(self.statement()?);
+            statements.push(self.top_level_statement()?);
         }
 
         Ok(ast::Module(statements))
