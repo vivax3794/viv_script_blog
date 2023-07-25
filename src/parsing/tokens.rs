@@ -12,12 +12,28 @@ pub enum TokenType {
     Dollar,
     CurlyOpen,
     CurlyClose,
+    ParenOpen,
+    ParenClose,
     Comma,
     True,
     False,
     Assert,
     Eq,
+    Bang,
     EqEq,
+    BangEq,
+    Lt,
+    Gt,
+    GtEq,
+    LtEq,
+    Minus,
+    Plus,
+    Star,
+    Slash,
+    AndAnd,
+    OrOr,
+    Or,
+    And,
     Eof,
 }
 
@@ -184,6 +200,15 @@ impl Tokenizer {
                 c if c.is_ascii_alphabetic() => tokens.push(self.consume_identifier()),
                 c if c.is_ascii_whitespace() => self.consume_whitespace(),
                 '=' => tokens.push(self.consume_double_symbol('=', TokenType::Eq, TokenType::EqEq)),
+                '!' => {
+                    tokens.push(self.consume_double_symbol('=', TokenType::Bang, TokenType::BangEq))
+                }
+                '<' => tokens.push(self.consume_double_symbol('=', TokenType::Lt, TokenType::LtEq)),
+                '>' => tokens.push(self.consume_double_symbol('=', TokenType::Gt, TokenType::GtEq)),
+                '&' => {
+                    tokens.push(self.consume_double_symbol('&', TokenType::And, TokenType::AndAnd))
+                }
+                '|' => tokens.push(self.consume_double_symbol('|', TokenType::Or, TokenType::OrOr)),
                 _ => {
                     self.void();
 
@@ -193,6 +218,12 @@ impl Tokenizer {
                         ',' => tokens.push(self.token(TokenType::Comma)),
                         '{' => tokens.push(self.token(TokenType::CurlyOpen)),
                         '}' => tokens.push(self.token(TokenType::CurlyClose)),
+                        '(' => tokens.push(self.token(TokenType::ParenOpen)),
+                        ')' => tokens.push(self.token(TokenType::ParenClose)),
+                        '-' => tokens.push(self.token(TokenType::Minus)),
+                        '+' => tokens.push(self.token(TokenType::Plus)),
+                        '*' => tokens.push(self.token(TokenType::Star)),
+                        '/' => tokens.push(self.token(TokenType::Slash)),
                         _ => self.error(format!("Unexpected character: {}", c))?,
                     }
                 }

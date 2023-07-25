@@ -431,6 +431,7 @@ dependencies = [
  "anyhow",
  "clap",
  "inkwell",
+ "lazy_static",
  "temp-file",
  "thiserror",
 ]

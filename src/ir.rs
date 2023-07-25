@@ -21,20 +21,47 @@ pub enum PrintStatement {
 #[derive(Debug)]
 pub enum IntExpression {
     Literal(i32),
+    Negate(Box<IntExpression>),
+    BinaryOperation(Box<IntExpression>, IntBinaryOp, Box<IntExpression>),
+}
+
+#[derive(Debug)]
+pub enum IntBinaryOp {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
 }
 
 #[derive(Debug)]
 pub enum BooleanExpression {
     Literal(bool),
+    Not(Box<BooleanExpression>),
     Comparison(ComparisonExpression),
+    Operator(
+        Box<BooleanExpression>,
+        BooleanOperator,
+        Box<BooleanExpression>,
+    ),
+}
+
+#[derive(Debug)]
+pub enum BooleanOperator {
+    And,
+    Or,
 }
 
 #[derive(Debug)]
 pub enum ComparisonExpression {
-    IntComparison(Box<IntExpression>, IntComparisonOp, Box<IntExpression>),
+    IntComparison(Box<IntExpression>, Vec<(IntComparisonOp, IntExpression)>),
 }
 
 #[derive(Debug)]
 pub enum IntComparisonOp {
     Equal,
+    NotEquals,
+    LessThan,
+    LessThanEquals,
+    GreaterThan,
+    GreaterThanEquals,
 }

@@ -74,6 +74,25 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_int_expression(&self, expression: &ir::IntExpression) -> inkwell::values::IntValue {
         match expression {
             ir::IntExpression::Literal(int) => self.int_type().const_int(*int as u64, false),
+            ir::IntExpression::Negate(expression) => {
+                let expression = self.compile_int_expression(expression);
+                self.builder.build_int_neg(expression, "Negate")
+            }
+            ir::IntExpression::BinaryOperation(left, op, right) => {
+                let left = self.compile_int_expression(left);
+                let right = self.compile_int_expression(right);
+
+                match op {
+                    ir::IntBinaryOp::Plus => self.builder.build_int_add(left, right, "Plus"),
+                    ir::IntBinaryOp::Minus => self.builder.build_int_sub(left, right, "Minus"),
+                    ir::IntBinaryOp::Multiply => {
+                        self.builder.build_int_mul(left, right, "Multiply")
+                    }
+                    ir::IntBinaryOp::Divide => {
+                        self.builder.build_int_signed_div(left, right, "Divide")
+                    }
+                }
+            }
         }
     }
 
@@ -82,16 +101,35 @@ impl<'ctx> CodeGen<'ctx> {
         comparison: &ir::ComparisonExpression,
     ) -> inkwell::values::IntValue {
         match comparison {
-            ir::ComparisonExpression::IntComparison(left, op, right) => {
-                let left = self.compile_int_expression(left);
-                let right = self.compile_int_expression(right);
+            ir::ComparisonExpression::IntComparison(left, chains) => {
+                let mut current_left = self.compile_int_expression(left);
+                let mut parts = Vec::with_capacity(chains.len() - 1);
 
-                let op = match op {
-                    ir::IntComparisonOp::Equal => IntPredicate::EQ,
-                };
+                for (op, right_side) in chains {
+                    let right_side = self.compile_int_expression(right_side);
+                    let op = match op {
+                        ir::IntComparisonOp::Equal => IntPredicate::EQ,
+                        ir::IntComparisonOp::NotEquals => IntPredicate::NE,
+                        ir::IntComparisonOp::LessThan => IntPredicate::SLT,
+                        ir::IntComparisonOp::LessThanEquals => IntPredicate::SLE,
+                        ir::IntComparisonOp::GreaterThan => IntPredicate::SGT,
+                        ir::IntComparisonOp::GreaterThanEquals => IntPredicate::SGE,
+                    };
 
-                self.builder
-                    .build_int_compare(op, left, right, "Comparison")
+                    let part =
+                        self.builder
+                            .build_int_compare(op, current_left, right_side, "Compare");
+
+                    parts.push(part);
+                    current_left = right_side;
+                }
+
+                let mut result = parts[0];
+                for part in parts.iter().skip(1) {
+                    result = self.builder.build_and(result, *part, "And");
+                }
+
+                result
             }
         }
     }
@@ -104,7 +142,58 @@ impl<'ctx> CodeGen<'ctx> {
             ir::BooleanExpression::Literal(boolean) => {
                 self.context.bool_type().const_int(*boolean as u64, false)
             }
+            ir::BooleanExpression::Not(expression) => {
+                let expression = self.compile_bool_expression(expression);
+                self.builder.build_not(expression, "Not")
+            }
             ir::BooleanExpression::Comparison(comparison) => self.compile_comparison(comparison),
+            ir::BooleanExpression::Operator(left, op, right) => {
+                let left = self.compile_bool_expression(left);
+
+                let current_block = self.builder.get_insert_block().unwrap();
+                let right_block = self
+                    .context
+                    .insert_basic_block_after(current_block, "right_block");
+                let short_block = self
+                    .context
+                    .insert_basic_block_after(right_block, "short_block");
+                let continue_block = self
+                    .context
+                    .insert_basic_block_after(short_block, "continue_block");
+
+                let pointer = self
+                    .builder
+                    .build_alloca(self.context.bool_type(), "pointer");
+
+                match op {
+                    ir::BooleanOperator::And => {
+                        self.builder
+                            .build_conditional_branch(left, right_block, short_block);
+                    }
+                    ir::BooleanOperator::Or => {
+                        self.builder
+                            .build_conditional_branch(left, short_block, right_block);
+                    }
+                }
+
+                self.builder.position_at_end(right_block);
+                let right = self.compile_bool_expression(right);
+                self.builder.build_store(pointer, right);
+                self.builder.build_unconditional_branch(continue_block);
+
+                self.builder.position_at_end(short_block);
+                let short_result = match op {
+                    ir::BooleanOperator::And => self.context.bool_type().const_int(0, false),
+                    ir::BooleanOperator::Or => self.context.bool_type().const_int(1, false),
+                };
+                self.builder.build_store(pointer, short_result);
+                self.builder.build_unconditional_branch(continue_block);
+
+                self.builder.position_at_end(continue_block);
+                self.builder
+                    .build_load(self.context.bool_type(), pointer, "result")
+                    .into_int_value()
+            }
         }
     }
 
