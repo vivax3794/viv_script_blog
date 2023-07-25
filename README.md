@@ -1,4 +1,4 @@
-# Viv Script - Post 3
+# Viv Script - Post 4
 
 this is the source code for the compiler I am building in my blog series: <https://blog.vivax3794.com/>
 
