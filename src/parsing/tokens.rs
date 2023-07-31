@@ -8,6 +8,8 @@ pub enum TokenType {
     Identifier(String),
     String(String),
     Print,
+    Let,
+    Set,
     SemiColon,
     Dollar,
     CurlyOpen,
@@ -126,6 +128,8 @@ impl Tokenizer {
             "true" => TokenType::True,
             "false" => TokenType::False,
             "assert" => TokenType::Assert,
+            "let" => TokenType::Let,
+            "set" => TokenType::Set,
             _ => TokenType::Identifier(identifier),
         })
     }

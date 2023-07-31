@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{ir, CompilerOptions};
 use inkwell::{context::Context, IntPredicate};
 
@@ -6,6 +8,7 @@ pub struct CodeGen<'ctx> {
     module: inkwell::module::Module<'ctx>,
     builder: inkwell::builder::Builder<'ctx>,
     fpm: inkwell::passes::PassManager<inkwell::module::Module<'ctx>>,
+    local_vars: HashMap<ir::VariableIdentifier, inkwell::values::PointerValue<'ctx>>,
 }
 
 impl<'ctx> CodeGen<'ctx> {
@@ -42,10 +45,11 @@ impl<'ctx> CodeGen<'ctx> {
             module,
             builder,
             fpm,
+            local_vars: HashMap::new(),
         }
     }
 
-    fn int_type(&self) -> inkwell::types::IntType {
+    fn int_type(&self) -> inkwell::types::IntType<'ctx> {
         use crate::IntWidth;
 
         match IntWidth {
@@ -71,7 +75,10 @@ impl<'ctx> CodeGen<'ctx> {
         self.module.add_function("abort", abort_type, None);
     }
 
-    fn compile_int_expression(&self, expression: &ir::IntExpression) -> inkwell::values::IntValue {
+    fn compile_int_expression(
+        &self,
+        expression: &ir::IntExpression,
+    ) -> inkwell::values::IntValue<'ctx> {
         match expression {
             ir::IntExpression::Literal(int) => self.int_type().const_int(*int as u64, false),
             ir::IntExpression::Negate(expression) => {
@@ -93,13 +100,19 @@ impl<'ctx> CodeGen<'ctx> {
                     }
                 }
             }
+            ir::IntExpression::Var(identifier) => {
+                let pointer = self.local_vars.get(identifier).unwrap();
+                self.builder
+                    .build_load(self.int_type(), *pointer, "Load")
+                    .into_int_value()
+            }
         }
     }
 
     fn compile_comparison(
         &self,
         comparison: &ir::ComparisonExpression,
-    ) -> inkwell::values::IntValue {
+    ) -> inkwell::values::IntValue<'ctx> {
         match comparison {
             ir::ComparisonExpression::IntComparison(left, chains) => {
                 let mut current_left = self.compile_int_expression(left);
@@ -137,7 +150,7 @@ impl<'ctx> CodeGen<'ctx> {
     fn compile_bool_expression(
         &self,
         expression: &ir::BooleanExpression,
-    ) -> inkwell::values::IntValue {
+    ) -> inkwell::values::IntValue<'ctx> {
         match expression {
             ir::BooleanExpression::Literal(boolean) => {
                 self.context.bool_type().const_int(*boolean as u64, false)
@@ -147,7 +160,7 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.build_not(expression, "Not")
             }
             ir::BooleanExpression::Comparison(comparison) => self.compile_comparison(comparison),
-            ir::BooleanExpression::Operator(left, op, right) => {
+            ir::BooleanExpression::Operator(result_identifier, left, op, right) => {
                 let left = self.compile_bool_expression(left);
 
                 let current_block = self.builder.get_insert_block().unwrap();
@@ -161,9 +174,7 @@ impl<'ctx> CodeGen<'ctx> {
                     .context
                     .insert_basic_block_after(short_block, "continue_block");
 
-                let pointer = self
-                    .builder
-                    .build_alloca(self.context.bool_type(), "pointer");
+                let pointer = *self.local_vars.get(result_identifier).unwrap();
 
                 match op {
                     ir::BooleanOperator::And => {
@@ -192,6 +203,12 @@ impl<'ctx> CodeGen<'ctx> {
                 self.builder.position_at_end(continue_block);
                 self.builder
                     .build_load(self.context.bool_type(), pointer, "result")
+                    .into_int_value()
+            }
+            ir::BooleanExpression::Var(identifier) => {
+                let pointer = self.local_vars.get(identifier).unwrap();
+                self.builder
+                    .build_load(self.context.bool_type(), *pointer, "Load")
                     .into_int_value()
             }
         }
@@ -272,17 +289,55 @@ impl<'ctx> CodeGen<'ctx> {
         match statement {
             ir::Statement::Print(print_statement) => self.compile_print_statement(print_statement),
             ir::Statement::Assert(expression, message) => self.compile_assert(expression, message),
+            ir::Statement::Assignment(identifier, statement) => {
+                let pointer = self.local_vars.get(identifier).unwrap();
+
+                match statement {
+                    ir::AssignmentStatement::Int(expression) => {
+                        let value = self.compile_int_expression(expression);
+                        self.builder.build_store(*pointer, value);
+                    }
+                    ir::AssignmentStatement::Boolean(expression) => {
+                        let value = self.compile_bool_expression(expression);
+                        self.builder.build_store(*pointer, value);
+                    }
+                }
+            }
         }
     }
 
-    fn compile_top_level_statement(&self, statement: &ir::ToplevelStatement) {
+    fn compile_top_level_statement(&mut self, statement: &ir::ToplevelStatement) {
         match statement {
-            ir::ToplevelStatement::MainFunction(statements) => {
+            ir::ToplevelStatement::Function {
+                name,
+                body: statements,
+                locals,
+            } => {
                 let i32_type = self.context.i32_type();
-                let main_type = i32_type.fn_type(&[], false);
-                let main = self.module.add_function("main", main_type, None);
-                let main_block = self.context.append_basic_block(main, "entry");
-                self.builder.position_at_end(main_block);
+                let function_type = i32_type.fn_type(&[], false);
+                let function = self.module.add_function(name, function_type, None);
+                let entry_block = self.context.append_basic_block(function, "entry");
+                self.builder.position_at_end(entry_block);
+
+                self.local_vars.clear();
+                for (identifier, var_type) in locals {
+                    match var_type {
+                        ir::VarType::Int => {
+                            let int_type = self.int_type();
+                            let var = self
+                                .builder
+                                .build_alloca(int_type, &format!("var_{}", identifier.0));
+                            self.local_vars.insert(*identifier, var);
+                        }
+                        ir::VarType::Boolean => {
+                            let bool_type = self.context.bool_type();
+                            let var = self
+                                .builder
+                                .build_alloca(bool_type, &format!("var_{}", identifier.0));
+                            self.local_vars.insert(*identifier, var);
+                        }
+                    }
+                }
 
                 for statement in statements {
                     self.compile_statement(statement);

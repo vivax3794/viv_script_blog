@@ -1,3 +1,6 @@
 ${
-    assert true && true;
+    let x = 1;
+    print x;
+    set x = 2;
+    print x;
 }

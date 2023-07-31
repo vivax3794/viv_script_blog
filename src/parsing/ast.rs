@@ -12,6 +12,10 @@ pub enum ToplevelStatement {
 pub enum Statement {
     Print(Expression),
     Assert(Expression, Option<String>),
+    // let x = 1;
+    Declaration(String, Expression),
+    // x = 1;
+    Assignment(String, Expression),
 }
 
 #[derive(Debug)]
@@ -52,4 +56,5 @@ pub enum ComparisonOp {
 pub enum Literal {
     Integer(IntType),
     Boolean(bool),
+    Variable(String),
 }

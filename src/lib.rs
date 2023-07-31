@@ -23,7 +23,9 @@ pub fn build(file_name: &str, output_file: &str, options: CompilerOptions) -> an
     let code = std::fs::read_to_string(file_name).context("Reading input file")?;
 
     let ast = parsing::parse(&code, &options).context("Parsing input file")?;
-    let ir = type_analyzer::resolve_module(&ast).context("Resolving types")?;
+    let ir = type_analyzer::Analyzer::new()
+        .resolve_module(&ast)
+        .context("Resolving types")?;
 
     if options.output_ir {
         println!("{ir:#?}");

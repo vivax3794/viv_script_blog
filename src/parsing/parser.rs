@@ -93,6 +93,7 @@ impl Parser {
             TokenType::Integer(i) => Ok(ast::Literal::Integer(i)),
             TokenType::True => Ok(ast::Literal::Boolean(true)),
             TokenType::False => Ok(ast::Literal::Boolean(false)),
+            TokenType::Identifier(name) => Ok(ast::Literal::Variable(name)),
             _ => Err(error(token, "Literal".to_string()))?,
         }
     }
@@ -196,9 +197,29 @@ impl Parser {
 
                 Ok(ast::Statement::Assert(expression, message))
             }
+            TokenType::Let | TokenType::Set => {
+                let identifier = self.advance()?;
+                match identifier._type {
+                    TokenType::Identifier(name) => {
+                        self.expect(TokenType::Eq)?;
+                        let expression = self.expression()?;
+                        self.expect(TokenType::SemiColon)?;
+                        Ok(match token._type {
+                            TokenType::Let => ast::Statement::Declaration(name, expression),
+                            TokenType::Set => ast::Statement::Assignment(name, expression),
+                            _ => unreachable!(),
+                        })
+                    }
+                    _ => Err(error(identifier, "Identifier".to_string()))?,
+                }
+            }
             _ => Err(error(token, "Statement".to_string()))?,
         }
     }
+
+    // let x = 123; -> Declaration
+    // set x = 12313; -> Assignment
+    // x(); -> Expression
 
     fn main_function(&mut self) -> anyhow::Result<ast::ToplevelStatement> {
         self.expect(TokenType::CurlyOpen)?;

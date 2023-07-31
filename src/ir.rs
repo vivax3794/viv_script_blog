@@ -3,13 +3,33 @@ pub struct Module(pub Vec<ToplevelStatement>);
 
 #[derive(Debug)]
 pub enum ToplevelStatement {
-    MainFunction(Vec<Statement>),
+    Function {
+        name: String,
+        body: Vec<Statement>,
+        locals: Vec<(VariableIdentifier, VarType)>,
+    },
 }
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum VarType {
+    Int,
+    Boolean,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, Copy, Clone)]
+pub struct VariableIdentifier(pub usize);
 
 #[derive(Debug)]
 pub enum Statement {
     Print(PrintStatement),
     Assert(BooleanExpression, Option<String>),
+    Assignment(VariableIdentifier, AssignmentStatement),
+}
+
+#[derive(Debug)]
+pub enum AssignmentStatement {
+    Int(IntExpression),
+    Boolean(BooleanExpression),
 }
 
 #[derive(Debug)]
@@ -23,6 +43,7 @@ pub enum IntExpression {
     Literal(i32),
     Negate(Box<IntExpression>),
     BinaryOperation(Box<IntExpression>, IntBinaryOp, Box<IntExpression>),
+    Var(VariableIdentifier),
 }
 
 #[derive(Debug)]
@@ -39,10 +60,12 @@ pub enum BooleanExpression {
     Not(Box<BooleanExpression>),
     Comparison(ComparisonExpression),
     Operator(
+        VariableIdentifier,
         Box<BooleanExpression>,
         BooleanOperator,
         Box<BooleanExpression>,
     ),
+    Var(VariableIdentifier),
 }
 
 #[derive(Debug)]
